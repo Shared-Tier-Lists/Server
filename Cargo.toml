@@ -1,0 +1,12 @@
+[package]
+name = "SharedTierList"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dotenv = "0.15.0"
+tokio = { version = "1", features = ["full"] }
+axum = "0.8.1"
+http = "1.2.0"
+serde = { version = "1.0.218", features = ["derive"] }
+mongodb = "3.2.2"
