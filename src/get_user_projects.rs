@@ -1,14 +1,13 @@
-use std::sync::Arc;
+use crate::util::get_string_field;
+use crate::{error, AppState};
 use axum::extract::State;
 use axum::Json;
-use axum_core::response::IntoResponse;
 use http::StatusCode;
-use mongodb::bson::{doc, Document};
 use mongodb::bson::oid::ObjectId;
-use mongodb::{Collection, Database};
+use mongodb::bson::{doc, Document};
+use mongodb::Collection;
 use serde::{Deserialize, Serialize};
-use crate::error;
-use crate::util::get_string_field;
+use std::sync::Arc;
 
 #[derive(Deserialize, Debug)]
 pub struct GetProjectsRequest {
@@ -52,11 +51,11 @@ async fn query_tier_list(
 }
 
 async fn query_user_projects(
-    db: Arc<Database>,
+    app_state: Arc<AppState>,
     user: Document,
     template_link: String
 ) -> error::Result<Vec<TierList>> {
-    let tier_lists_collection = db.collection::<Document>("tier_lists");
+    let tier_lists_collection = app_state.db.collection::<Document>("tier_lists");
 
     let tier_list_ids = user.get_array("tier_lists")?;
     let mut user_tier_lists = vec![];
@@ -77,10 +76,10 @@ async fn query_user_projects(
 
 
 async fn create_user(
-    db: Arc<Database>,
+    app_state: Arc<AppState>,
     user_id: i64
 ) -> error::Result<Vec<TierList>> {
-    let users = db.collection::<Document>("users");
+    let users = app_state.db.collection::<Document>("users");
 
     let user = doc! {
         "tier_lists": [],
@@ -93,31 +92,31 @@ async fn create_user(
 }
 
 async fn get_user_projects_response(
-    db: Arc<Database>,
+    app_state: Arc<AppState>,
     user_opt: Option<Document>,
     template_link: String,
     user_id: i64
 ) -> error::Result<Vec<TierList>> {
     if let Some(user) = user_opt {
-        query_user_projects(db, user, template_link).await
+        query_user_projects(app_state, user, template_link).await
     } else {
-        create_user(db, user_id).await
+        create_user(app_state, user_id).await
     }
 }
 
 
 pub async fn get_user_projects(
-    State(db): State<Arc<Database>>,
+    State(app_state): State<Arc<AppState>>,
     Json(payload): Json<GetProjectsRequest>,
 ) -> Result<Json<Option<Vec<TierList>>>, StatusCode> {
-    let users = db.collection::<Document>("users");
+    let users = app_state.db.collection::<Document>("users");
 
     let user_opt = users
         .find_one(doc! { "user_id": payload.user_id })
         .await
         .map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    let tier_lists = get_user_projects_response(db, user_opt, payload.template_link, payload.user_id)
+    let tier_lists = get_user_projects_response(app_state, user_opt, payload.template_link, payload.user_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 

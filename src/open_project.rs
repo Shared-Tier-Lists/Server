@@ -1,12 +1,11 @@
-use std::sync::Arc;
+use crate::util::get_string_field;
+use crate::AppState;
 use axum::extract::State;
 use axum::Json;
 use http::StatusCode;
-use mongodb::bson::{doc, Document, oid::ObjectId};
-use mongodb::Database;
+use mongodb::bson::{doc, oid::ObjectId, Document};
 use serde::{Deserialize, Serialize};
-
-use crate::util::get_string_field;
+use std::sync::Arc;
 
 #[derive(Deserialize)]
 pub struct OpenProjectRequest {
@@ -20,10 +19,10 @@ pub struct OpenProjectResponse {
 }
 
 pub async fn open_project(
-    State(db): State<Arc<Database>>,
+    State(app_state): State<Arc<AppState>>,
     Json(payload): Json<OpenProjectRequest>,
 ) -> Result<Json<Option<OpenProjectResponse>>, StatusCode> {
-    let tier_lists = db.collection::<Document>("tier_lists");
+    let tier_lists = app_state.db.collection::<Document>("tier_lists");
 
     let tier_list_opt = tier_lists
         .find_one(doc! { "_id": payload.id })

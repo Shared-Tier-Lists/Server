@@ -1,8 +1,10 @@
 mod error;
 mod open_project;
 mod get_user_projects;
+mod ws;
 mod util;
 
+use std::collections::HashSet;
 use crate::get_user_projects::get_user_projects;
 // use crate::open_project::open_project;
 use axum::response::IntoResponse;
@@ -14,20 +16,47 @@ use dotenv::dotenv;
 use mongodb::{options::ClientOptions, Client};
 use serde::{Deserialize, Serialize};
 use std::env;
-use std::sync::Arc;
-use axum::routing::post;
+use std::sync::{Arc, Mutex};
+use axum::routing::{any, post};
+use futures_util::SinkExt;
+use tokio::sync::broadcast;
 use crate::open_project::open_project;
 
 use tower_http::cors::{Any, CorsLayer};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use crate::ws::ws_handler;
+
+struct AppState {
+    db: mongodb::Database,
+    user_set: Mutex<HashSet<i64>>,
+    tx: broadcast::Sender<String>,
+}
 
 #[tokio::main]
 async fn main() -> mongodb::error::Result<()> {
     dotenv().ok();
 
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| format!("{}=trace", env!("CARGO_CRATE_NAME")).into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
     let uri = env::var("MONGODB_URI").expect("Error: No MONGODB_URI");
     let client_options = ClientOptions::parse(uri).await?;
     let client = Client::with_options(client_options)?;
     let db = client.database("shared_tier_lists");
+
+    let (tx, _rx) = broadcast::channel(100);
+
+    let app_state = AppState {
+        db,
+        user_set: Mutex::new(HashSet::new()),
+        tx
+    };
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -37,10 +66,13 @@ async fn main() -> mongodb::error::Result<()> {
     let app = Router::new()
         .route("/tier-lists", post(get_user_projects))
         .route("/open-project", post(open_project))
+        .route("/ws", any(ws_handler))
         .layer(cors)
-        .with_state(Arc::new(db));
+        .with_state(Arc::new(app_state));
+    
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
+    tracing::debug!("listening on {}", listener.local_addr()?);
     axum::serve(listener, app).await?;
 
     Ok(())

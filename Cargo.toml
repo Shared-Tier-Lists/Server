@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 dotenv = "0.15.0"
 tokio = { version = "1", features = ["full"] }
-axum = "0.8.1"
+axum = { version = "0.8.1", features = ["ws"] }
 http = "1.2.0"
 serde = { version = "1.0.218", features = ["derive"] }
 mongodb = "3.2.2"
@@ -15,3 +15,5 @@ futures-util = "0.3.31"
 axum-core = "0.5.2"
 thiserror = "2.0.17"
 tower-http = { version = "0.6.2", features = ["cors"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
