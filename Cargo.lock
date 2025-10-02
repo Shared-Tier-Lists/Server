@@ -12,6 +12,7 @@ dependencies = [
  "futures-util",
  "http",
  "mongodb",
+ "rand 0.9.2",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
