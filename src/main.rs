@@ -9,14 +9,15 @@ use axum::{
 };
 use dotenv::dotenv;
 use mongodb::bson::oid::ObjectId;
-use mongodb::bson::Document;
+use mongodb::bson::{Array, Document};
 use mongodb::{bson::doc, options::ClientOptions, Client, Collection, Database};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::sync::Arc;
+use axum::routing::post;
 
 #[derive(Deserialize, Debug)]
-struct UserInfo {
+struct TemplateInfo {
     user_id: i64,
     template_link: String
 }
@@ -29,6 +30,12 @@ struct UserTierList {
     template_link: String,
     tier_rows_html: String,
     tier_unused_characters_html: String
+}
+
+
+struct User {
+    tier_lists: Vec<ObjectId>,
+    user_id: i64
 }
 
 fn get_string_field(
@@ -81,39 +88,60 @@ async fn query_user_projects(
     Ok(user_tier_lists)
 }
 
+
+async fn create_user(
+    db: Arc<Database>,
+    user_id: i64
+) -> error::Result<()> {
+    let users = db.collection::<Document>("users");
+
+    let user = doc! {
+        "tier_lists": [],
+        "user_id": user_id,
+    };
+
+    users.insert_one(user).await?;
+
+    Ok(())
+}
+
 async fn get_user_projects_response(
     db: Arc<Database>,
     user_opt: Option<Document>,
-    template_link: String
+    template_link: String,
+    user_id: i64
 ) -> (StatusCode, Json<Option<Vec<UserTierList>>>) {
-    match user_opt {
-        Some(user) => {
-            match query_user_projects(db, user, template_link).await {
-                Ok(lists) => {
-                    (StatusCode::OK, Json(Some(lists)))
-                }
-                Err(_) => {
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(None))
-                }
+
+    if let Some(user) = user_opt {
+        return match query_user_projects(db, user, template_link).await {
+            Ok(lists) => {
+                (StatusCode::OK, Json(Some(lists)))
+            }
+            Err(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(None))
             }
         }
-        None => {
-            // todo: make new user
-            // create_user(db)
-            (StatusCode::OK, Json(None))
+    }
+
+    match create_user(db, user_id).await {
+        Ok(_) => {
+            (StatusCode::CREATED, Json(None))
+        }
+        Err(_) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(None))
         }
     }
 }
 
 async fn get_user_projects(
     State(db): State<Arc<Database>>,
-    Json(payload): Json<UserInfo>
+    Json(payload): Json<TemplateInfo>
 ) -> impl IntoResponse {
     let users = db.collection::<Document>("users");
 
     match users.find_one(doc! { "user_id": payload.user_id }).await {
         Ok(user_opt) => {
-            get_user_projects_response(db, user_opt, payload.template_link).await.into_response()
+            get_user_projects_response(db, user_opt, payload.template_link, payload.user_id).await.into_response()
         }
         Err(error) => {
             (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
