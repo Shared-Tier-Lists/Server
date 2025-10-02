@@ -1,3 +1,5 @@
+mod error;
+
 use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::{
@@ -7,13 +9,11 @@ use axum::{
 };
 use dotenv::dotenv;
 use mongodb::bson::oid::ObjectId;
-use mongodb::bson::{Bson, Document};
+use mongodb::bson::Document;
 use mongodb::{bson::doc, options::ClientOptions, Client, Collection, Database};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::sync::Arc;
-use serde_json::json;
-
 
 #[derive(Deserialize, Debug)]
 struct UserInfo {
@@ -41,7 +41,7 @@ fn get_string_field(
 async fn query_tier_list(
     id: ObjectId,
     tier_lists: &Collection<Document>
-) -> mongodb::error::Result<Option<UserTierList>> {
+) -> error::Result<Option<UserTierList>> {
     let tier_list_opt = tier_lists.find_one(doc! { "_id": id }).await?;
 
     if let Some(tier_list) = tier_list_opt {
@@ -61,24 +61,24 @@ async fn query_user_projects(
     db: Arc<Database>,
     user: Document,
     template_link: String
-) -> mongodb::error::Result<Option<Vec<UserTierList>>> {
+) -> error::Result<Vec<UserTierList>> {
     let tier_lists_collection = db.collection::<Document>("tier_lists");
 
-    let tier_list_ids = user.get_array("tier_lists").expect("user must have tier_lists field");
+    let tier_list_ids = user.get_array("tier_lists")?;
     let mut user_tier_lists = vec![];
 
     for id in tier_list_ids {
         let tier_list_id = id.as_object_id().expect("id must be ObjectId");
         let tier_list_opt = query_tier_list(tier_list_id, &tier_lists_collection).await?;
 
-        if let Some(list) = tier_list_opt {
-            if list.template_link == template_link {
-                user_tier_lists.push(list);
+        if let Some(tier_list) = tier_list_opt {
+            if tier_list.template_link == template_link {
+                user_tier_lists.push(tier_list);
             }
         }
     }
 
-    Ok(Some(user_tier_lists))
+    Ok(user_tier_lists)
 }
 
 async fn get_user_projects_response(
@@ -90,7 +90,7 @@ async fn get_user_projects_response(
         Some(user) => {
             match query_user_projects(db, user, template_link).await {
                 Ok(lists) => {
-                    (StatusCode::OK, Json(lists))
+                    (StatusCode::OK, Json(Some(lists)))
                 }
                 Err(_) => {
                     (StatusCode::INTERNAL_SERVER_ERROR, Json(None))
@@ -99,6 +99,7 @@ async fn get_user_projects_response(
         }
         None => {
             // todo: make new user
+            // create_user(db)
             (StatusCode::OK, Json(None))
         }
     }
