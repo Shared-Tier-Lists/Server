@@ -2,11 +2,10 @@ mod error;
 mod open_project;
 mod get_user_projects;
 mod ws;
-mod util;
+mod types;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use crate::get_user_projects::get_user_projects;
-// use crate::open_project::open_project;
 use axum::response::IntoResponse;
 use axum::{
     routing::get
@@ -16,21 +15,22 @@ use dotenv::dotenv;
 use mongodb::{options::ClientOptions, Client};
 use serde::{Deserialize, Serialize};
 use std::env;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use axum::routing::{any, post};
 use futures_util::SinkExt;
-use tokio::sync::broadcast;
+use mongodb::bson::oid::ObjectId;
+use tokio::sync::{broadcast, Mutex};
 use crate::open_project::open_project;
 
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use crate::types::ProjectContents;
 use crate::ws::ws_handler;
 
 struct AppState {
     db: mongodb::Database,
-    user_set: Mutex<HashSet<i64>>,
-    tx: broadcast::Sender<String>,
+    live_sessions: Mutex<HashMap<ObjectId, broadcast::Sender<ProjectContents>>>,
 }
 
 #[tokio::main]
@@ -50,12 +50,9 @@ async fn main() -> mongodb::error::Result<()> {
     let client = Client::with_options(client_options)?;
     let db = client.database("shared_tier_lists");
 
-    let (tx, _rx) = broadcast::channel(100);
-
     let app_state = AppState {
         db,
-        user_set: Mutex::new(HashSet::new()),
-        tx
+        live_sessions: Mutex::new(HashMap::new()),
     };
 
     let cors = CorsLayer::new()
@@ -64,7 +61,7 @@ async fn main() -> mongodb::error::Result<()> {
         .allow_headers(Any);
 
     let app = Router::new()
-        .route("/tier-lists", post(get_user_projects))
+        .route("/open-project-list", post(get_user_projects))
         .route("/open-project", post(open_project))
         .route("/ws", any(ws_handler))
         .layer(cors)
