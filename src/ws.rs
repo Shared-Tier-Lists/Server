@@ -1,20 +1,17 @@
-use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
-use axum::extract::{Path, Query, State, WebSocketUpgrade};
+use axum::extract::{Query, State, WebSocketUpgrade};
 use axum::extract::ws::{Message, WebSocket};
 use axum_core::response::IntoResponse;
 use futures_util::{SinkExt, StreamExt};
 use http::StatusCode;
-use mongodb::bson::{doc, Document, Uuid};
-use mongodb::bson::oid::{Error, ObjectId};
-use mongodb::Collection;
-use rand::random;
-use serde::{Deserialize, Serialize};
+use mongodb::bson::{doc, Document};
+use mongodb::bson::oid::{ObjectId};
+use serde::{Deserialize};
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::Sender;
-use crate::AppState;
-use crate::types::ProjectContents;
+use crate::{AppState, ProjectContents};
+use crate::db_constants::{Collections, ProjectFields};
 
 
 #[derive(Debug, Deserialize)]
@@ -24,7 +21,7 @@ pub struct ProjectInfo {
 }
 
 async fn handle_socket(
-    mut socket: WebSocket,
+    socket: WebSocket,
     state: Arc<AppState>,
     tx: Sender<ProjectContents>,
     project_id: ObjectId
@@ -77,22 +74,19 @@ async fn shared_session_broadcast_sender(
     project_id: ObjectId
 ) -> Result<Sender<ProjectContents>, StatusCode> {
     tracing::debug!("Getting session");
-    let tier_lists = state.db.collection::<Document>("tier_lists");
+    let projects = state.db.collection::<Document>(Collections::PROJECTS);
 
-    let tier_list_opt = tier_lists.find_one(doc! { "_id": project_id }).await
+    let project_opt = projects.find_one(doc! { ProjectFields::ID: project_id }).await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    match tier_list_opt {
+    match project_opt {
         None => {
             Err(StatusCode::NOT_FOUND)
         }
-        Some(tier_list) => {
-            let tier_list_id = tier_list.get_object_id("_id")
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        Some(_) => {
+            let mut live_sessions_guard = state.live_sessions.lock().await;
 
-            let mut guard = state.live_sessions.lock().await;
-
-            match guard.get(&tier_list_id) {
+            match live_sessions_guard.get(&project_id) {
                 Some(tx) => {
                     tracing::debug!("Session already started");
                     Ok(tx.clone())
@@ -101,7 +95,7 @@ async fn shared_session_broadcast_sender(
                     tracing::debug!("Session not yet started");
                     const BROADCAST_CHANNEL_CAPACITY: usize = 64;
                     let (tx, _rx) = broadcast::channel(BROADCAST_CHANNEL_CAPACITY);
-                    guard.insert(project_id, tx.clone());
+                    live_sessions_guard.insert(project_id, tx.clone());
                     tracing::debug!("Session created");
                     Ok(tx)
                 }

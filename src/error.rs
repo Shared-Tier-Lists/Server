@@ -6,7 +6,7 @@ use thiserror::Error;
 pub enum SharedTierListError {
 
     #[error("MongoDB value access failed")]
-    MongoValueAccess(#[from] ValueAccessError),
+    MongoValueAccessError(#[from] ValueAccessError),
 
     #[error("MongoDB generic error")]
     MongoError(#[from] mongodb::error::Error),

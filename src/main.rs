@@ -1,36 +1,40 @@
 mod error;
 mod open_project;
-mod get_user_projects;
+mod open_project_list;
 mod ws;
-mod types;
+mod db_constants;
+mod authentication;
 
 use std::collections::{HashMap, HashSet};
-use crate::get_user_projects::get_user_projects;
-use axum::response::IntoResponse;
-use axum::{
-    routing::get
-    , Router,
-};
+use crate::open_project_list::open_project_list;
 use dotenv::dotenv;
 use mongodb::{options::ClientOptions, Client};
-use serde::{Deserialize, Serialize};
 use std::env;
 use std::sync::Arc;
+use axum::Router;
 use axum::routing::{any, post};
-use futures_util::SinkExt;
 use mongodb::bson::oid::ObjectId;
+use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, Mutex};
 use crate::open_project::open_project;
 
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use crate::types::ProjectContents;
+use crate::authentication::{login, signup};
 use crate::ws::ws_handler;
+
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProjectContents {
+    pub tier_container_html: String,
+    pub image_carousel_html: String,
+}
 
 struct AppState {
     db: mongodb::Database,
     live_sessions: Mutex<HashMap<ObjectId, broadcast::Sender<ProjectContents>>>,
+    jwt_secret_key: String,
 }
 
 #[tokio::main]
@@ -53,6 +57,7 @@ async fn main() -> mongodb::error::Result<()> {
     let app_state = AppState {
         db,
         live_sessions: Mutex::new(HashMap::new()),
+        jwt_secret_key: env::var("JWT_SECRET_KEY").expect("Error: No JWT_SECRET_KEY"),
     };
 
     let cors = CorsLayer::new()
@@ -61,7 +66,9 @@ async fn main() -> mongodb::error::Result<()> {
         .allow_headers(Any);
 
     let app = Router::new()
-        .route("/open-project-list", post(get_user_projects))
+        .route("/signup", post(signup))
+        .route("/login", post(login))
+        .route("/open-project-list", post(open_project_list))
         .route("/open-project", post(open_project))
         .route("/ws", any(ws_handler))
         .layer(cors)
