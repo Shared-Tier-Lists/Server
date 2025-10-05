@@ -27,9 +27,15 @@ struct Claims {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct LoginRequest {
+pub struct SignupRequest {
     email: String,
     display_name: String,
+    password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LoginRequest {
+    email: String,
     password: String,
 }
 
@@ -41,7 +47,7 @@ pub struct LoginResponse {
 
 pub async fn signup(
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<LoginRequest>,
+    Json(payload): Json<SignupRequest>,
 ) -> Result<StatusCode, StatusCode> {
     let users = state.db.collection::<Document>(Collections::USERS);
     let user_opt: Option<Document> = users
@@ -128,7 +134,6 @@ pub async fn login(
 }
 
 pub async fn authenticate_user(
-    user_id: ObjectId,
     app_state: Arc<AppState>,
     auth: Authorization<Bearer>,
 ) -> Result<Document, StatusCode> {
@@ -138,14 +143,10 @@ pub async fn authenticate_user(
          &Validation::default()
     ).map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-    if user_id.to_hex() != claims.claims.sub {
-        return Err(StatusCode::UNAUTHORIZED)
-    }
-
     let users = app_state.db.collection::<Document>(Collections::USERS);
 
     let user_opt = users
-        .find_one(doc! { UserFields::ID: user_id })
+        .find_one(doc! { UserFields::ID: claims.claims.sub })
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 

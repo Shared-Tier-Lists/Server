@@ -18,6 +18,7 @@ impl ProjectFields {
     pub const ID: &'static str = "_id";
     pub const NAME: &'static str = "name";
     pub const TEMPLATE_LINK: &'static str = "template_link";
+    pub const OWNER: &'static str = "owner";
     pub const CONTRIBUTORS: &'static str = "contributors";
     pub const TIER_CONTAINER_HTML: &'static str = "tier_container_html";
     pub const IMAGE_CAROUSEL_HTML: &'static str = "image_carousel_html";

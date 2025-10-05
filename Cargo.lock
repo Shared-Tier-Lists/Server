@@ -18,6 +18,7 @@ dependencies = [
  "hex",
  "http",
  "jsonwebtoken",
+ "log",
  "mongodb",
  "password-hash",
  "rand 0.8.5",

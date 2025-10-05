@@ -13,7 +13,7 @@ use mongodb::bson::{doc, Document};
 use mongodb::Database;
 use serde::Deserialize;
 use std::sync::Arc;
-
+use tracing::debug;
 
 #[derive(Deserialize)]
 pub struct InviteRequest {
@@ -22,15 +22,14 @@ pub struct InviteRequest {
     emails: Vec<String>
 }
 
-pub async fn invite_users(db: Database, project: Document, emails: Vec<String>) -> crate::error::Result<()> {
-    let project_id = project.get_object_id(ProjectFields::ID)?;
+pub async fn invite_users(db: Database, project_id: ObjectId, emails: Vec<String>) -> crate::error::Result<()> {
     let users = db.collection::<Document>(Collections::USERS);
     let projects = db.collection::<Document>(Collections::PROJECTS);
-
+    
     let filter = doc! { UserFields::EMAIL: { "$in": emails } };
     let mut cursor = users.find(filter).await?;
     let mut invited_user_ids = Vec::new();
-
+    
     while let Some(user) = cursor.try_next().await? {
         let user_id = user.get_object_id(UserFields::ID)?;
 
@@ -41,6 +40,8 @@ pub async fn invite_users(db: Database, project: Document, emails: Vec<String>) 
 
         invited_user_ids.push(user_id);
     }
+
+    debug!("Updated user projects");
 
     projects.update_one(
         doc! { ProjectFields::ID: project_id },
@@ -56,7 +57,7 @@ pub async fn invite_to_project(
     TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
     Json(payload): Json<InviteRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    authenticate_user(payload.user_id, app_state.clone(), auth).await
+    authenticate_user(app_state.clone(), auth).await
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
     let projects = app_state.db.collection::<Document>(Collections::PROJECTS);
@@ -66,7 +67,10 @@ pub async fn invite_to_project(
         .await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if let Some(project) = project_opt {
-        match invite_users(app_state.db.clone(), project, payload.emails).await {
+        let project_id = project.get_object_id(ProjectFields::ID)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        
+        match invite_users(app_state.db.clone(), project_id, payload.emails).await {
             Ok(()) => Ok(StatusCode::OK),
             Err(_) => Ok(StatusCode::INTERNAL_SERVER_ERROR)
         }

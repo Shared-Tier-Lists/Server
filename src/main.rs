@@ -17,7 +17,7 @@ use axum::routing::{any, post};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, Mutex};
-use crate::project_options::{create_project, open_project};
+use crate::project_options::{create_project, delete_project, open_project};
 
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::layer::SubscriberExt;
@@ -73,7 +73,8 @@ async fn main() -> mongodb::error::Result<()> {
         .route("/open-project-list", post(open_project_list))
         .route("/open-project", post(open_project))
         .route("/create-project", post(create_project))
-        .route("/invite_to_project", post(invite_to_project))
+        .route("/delete_project", post(delete_project))
+        .route("/invite-to-project", post(invite_to_project))
         .route("/ws", any(ws_handler))
         .layer(cors)
         .with_state(Arc::new(app_state));

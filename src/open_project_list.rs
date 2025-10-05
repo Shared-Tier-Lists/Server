@@ -86,7 +86,7 @@ pub async fn open_project_list(
     TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
     Json(payload): Json<GetProjectsRequest>,
 ) -> Result<Json<GetProjectsResponse>, StatusCode> {
-    let user = authenticate_user(payload.user_id, app_state.clone(), auth).await
+    let user = authenticate_user(app_state.clone(), auth).await
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
     
     let projects = query_user_projects(app_state, &user, &payload.template_link).await
