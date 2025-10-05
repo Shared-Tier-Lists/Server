@@ -19,7 +19,6 @@ use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation}
 use mongodb::bson::oid::ObjectId;
 use mongodb::bson::{doc, Document};
 use password_hash::rand_core::OsRng;
-use sha2::Digest;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Claims {
@@ -37,6 +36,7 @@ pub struct LoginRequest {
 #[derive(Debug, Serialize)]
 pub struct LoginResponse {
     token: String,
+    user_id: String,
 }
 
 pub async fn signup(
@@ -75,8 +75,11 @@ pub async fn login(
     Json(payload): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, StatusCode> {
     let users = state.db.collection::<Document>(Collections::USERS);
-    let user_opt: Option<Document> = users.find_one(doc! { UserFields::EMAIL: payload.email.clone() }).await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let user_opt: Option<Document> = users.find_one(doc! {
+        UserFields::EMAIL: payload.email.clone()
+    }).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    tracing::debug!("looked up user");
 
     let user = match user_opt {
         Some(user_doc) => user_doc,
@@ -88,6 +91,8 @@ pub async fn login(
     let parsed_hash = PasswordHash::new(stored_hash)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    tracing::debug!("parsed password hash");
+
     let argon2 = Argon2::default();
     if argon2.verify_password(payload.password.as_bytes(), &parsed_hash).is_err() {
         return Err(StatusCode::UNAUTHORIZED);
@@ -98,11 +103,17 @@ pub async fn login(
         .unwrap()
         .timestamp();
 
+    tracing::debug!("{:?}", user);
+
+    let user_id = user.get_object_id(UserFields::ID)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?.to_string();
+
     let claims = Claims {
-        sub: user.get_str(UserFields::ID)
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?.to_string(),
+        sub: user_id.clone(),
         exp: expiration,
     };
+
+    tracing::debug!("constructed claims");
 
     let token = encode(
         &Header::default(),
@@ -110,7 +121,10 @@ pub async fn login(
         &EncodingKey::from_secret(state.jwt_secret_key.as_ref())
     ).unwrap();
 
-    Ok(Json(LoginResponse { token }))
+    Ok(Json(LoginResponse {
+        token,
+        user_id
+    }))
 }
 
 pub async fn authenticate_user(

@@ -85,12 +85,12 @@ pub async fn open_project_list(
     State(app_state): State<Arc<AppState>>,
     TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
     Json(payload): Json<GetProjectsRequest>,
-) -> Result<Json<Option<GetProjectsResponse>>, StatusCode> {
+) -> Result<Json<GetProjectsResponse>, StatusCode> {
     let user = authenticate_user(payload.user_id, app_state.clone(), auth).await
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
     
     let projects = query_user_projects(app_state, &user, &payload.template_link).await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(Json(Some(projects)))
+    Ok(Json(projects))
 }

@@ -1,11 +1,12 @@
 mod error;
-mod open_project;
+mod project_options;
 mod open_project_list;
 mod ws;
 mod db_constants;
 mod authentication;
+mod invite;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use crate::open_project_list::open_project_list;
 use dotenv::dotenv;
 use mongodb::{options::ClientOptions, Client};
@@ -16,12 +17,13 @@ use axum::routing::{any, post};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, Mutex};
-use crate::open_project::open_project;
+use crate::project_options::{create_project, open_project};
 
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use crate::authentication::{login, signup};
+use crate::invite::invite_to_project;
 use crate::ws::ws_handler;
 
 
@@ -70,6 +72,8 @@ async fn main() -> mongodb::error::Result<()> {
         .route("/login", post(login))
         .route("/open-project-list", post(open_project_list))
         .route("/open-project", post(open_project))
+        .route("/create-project", post(create_project))
+        .route("/invite_to_project", post(invite_to_project))
         .route("/ws", any(ws_handler))
         .layer(cors)
         .with_state(Arc::new(app_state));
