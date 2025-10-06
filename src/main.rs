@@ -5,6 +5,7 @@ mod ws;
 mod db_constants;
 mod authentication;
 mod invite;
+mod ws_types;
 
 use std::collections::HashMap;
 use crate::open_project_list::open_project_list;
@@ -17,6 +18,7 @@ use axum::routing::{any, post};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, Mutex};
+use tokio::sync::broadcast::Sender;
 use crate::project_options::{create_project, delete_project, open_project};
 
 use tower_http::cors::{Any, CorsLayer};
@@ -25,18 +27,18 @@ use tracing_subscriber::util::SubscriberInitExt;
 use crate::authentication::{login, signup};
 use crate::invite::invite_to_project;
 use crate::ws::ws_handler;
+use crate::ws_types::ProjectContentsResponse;
 
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ProjectContents {
-    pub tier_container_html: String,
-    pub image_carousel_html: String,
-}
+// #[derive(Debug, Serialize, Deserialize, Clone)]
+// pub struct ProjectContents {
+//     pub tier_container_html: String,
+//     pub image_carousel_html: String,
+// }
 
 struct AppState {
     db: mongodb::Database,
-    live_sessions: Mutex<HashMap<ObjectId, broadcast::Sender<ProjectContents>>>,
     jwt_secret_key: String,
+    live_sessions: Mutex<HashMap<ObjectId, Sender<ProjectContentsResponse>>>,
 }
 
 #[tokio::main]
@@ -71,7 +73,6 @@ async fn main() -> mongodb::error::Result<()> {
         .route("/signup", post(signup))
         .route("/login", post(login))
         .route("/open-project-list", post(open_project_list))
-        .route("/open-project", post(open_project))
         .route("/create-project", post(create_project))
         .route("/delete_project", post(delete_project))
         .route("/invite-to-project", post(invite_to_project))
